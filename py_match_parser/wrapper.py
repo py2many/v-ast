@@ -14,13 +14,25 @@ V_ENTRYPOINT = ROOT / "vlang_match_parser" / "main.v"
 
 
 def parse_expression(source: str) -> ast.Expression:
-    with tempfile.NamedTemporaryFile("w", suffix=".pm", delete=False) as handle:
+    payload = _run_parser("--json-expr", source)
+    return ast.Expression(body=_expr_from_json(payload))
+
+
+def parse_module(source: str) -> ast.Module:
+    payload = _run_parser("--json", source)
+    if payload.get("type") != "Module":
+        raise ValueError(f"expected Module payload, got {payload.get('type')}")
+    return ast.Module(body=[_stmt_from_json(item) for item in payload["body"]])
+
+
+def _run_parser(mode: str, source: str) -> dict[str, Any]:
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as handle:
         path = Path(handle.name)
         handle.write(source)
 
     try:
         proc = subprocess.run(
-            ["v", "run", str(V_ENTRYPOINT.parent), "--json", str(path)],
+            ["v", "run", str(V_ENTRYPOINT.parent), mode, str(path)],
             cwd=ROOT,
             check=False,
             text=True,
@@ -33,21 +45,90 @@ def parse_expression(source: str) -> ast.Expression:
         message = proc.stderr.strip() or proc.stdout.strip() or "unknown parser failure"
         raise ValueError(message)
 
-    payload = json.loads(proc.stdout)
-    return ast.Expression(body=_expr_from_json(payload))
+    return json.loads(proc.stdout)
+
+
+def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
+    kind = data["type"]
+    if kind == "Import":
+        return ast.Import(names=[ast.alias(name=item["name"]) for item in data["names"]])
+    if kind == "Expr":
+        return ast.Expr(value=_expr_from_json(data["value"]))
+    if kind == "Assign":
+        return ast.Assign(target=data["target"], value=_expr_from_json(data["value"]))
+    if kind == "Pass":
+        return ast.Pass()
+    if kind == "Break":
+        return ast.Break()
+    if kind == "Continue":
+        return ast.Continue()
+    if kind == "Return":
+        raw = data["value"]
+        return ast.Return(value=None if raw is None else _expr_from_json(raw))
+    if kind == "If":
+        return ast.If(
+            test=_expr_from_json(data["test"]),
+            body=[_stmt_from_json(item) for item in data["body"]],
+            orelse=[_stmt_from_json(item) for item in data["orelse"]],
+        )
+    if kind == "While":
+        return ast.While(
+            test=_expr_from_json(data["test"]),
+            body=[_stmt_from_json(item) for item in data["body"]],
+            orelse=[_stmt_from_json(item) for item in data["orelse"]],
+        )
+    if kind == "For":
+        return ast.For(
+            target=data["target"],
+            iter=_expr_from_json(data["iter"]),
+            body=[_stmt_from_json(item) for item in data["body"]],
+            orelse=[_stmt_from_json(item) for item in data["orelse"]],
+        )
+    if kind == "FunctionDef":
+        return ast.FunctionDef(
+            name=data["name"],
+            args=[str(x) for x in data["args"]],
+            body=[_stmt_from_json(item) for item in data["body"]],
+        )
+    if kind == "ClassDef":
+        return ast.ClassDef(
+            name=data["name"],
+            bases=[_expr_from_json(item) for item in data["bases"]],
+            body=[_stmt_from_json(item) for item in data["body"]],
+        )
+    raise ValueError(f"unsupported statement type: {kind}")
 
 
 def _expr_from_json(data: dict[str, Any]) -> ast.expr:
     kind = data["type"]
     if kind == "Constant":
-        return ast.Constant(value=int(data["value"]))
+        return ast.Constant(value=data["value"])
     if kind == "Name":
         return ast.Name(id=data["id"])
+    if kind == "Call":
+        return ast.Call(
+            func=_expr_from_json(data["func"]),
+            args=[_expr_from_json(item) for item in data["args"]],
+        )
+    if kind == "Attribute":
+        return ast.Attribute(value=_expr_from_json(data["value"]), attr=data["attr"])
+    if kind == "Subscript":
+        return ast.Subscript(value=_expr_from_json(data["value"]), slice=_expr_from_json(data["slice"]))
+    if kind == "UnaryOp":
+        return ast.UnaryOp(op=data["op"], operand=_expr_from_json(data["operand"]))
     if kind == "BinOp":
         return ast.BinOp(
             left=_expr_from_json(data["left"]),
             op=data["op"],
             right=_expr_from_json(data["right"]),
+        )
+    if kind == "BoolOp":
+        return ast.BoolOp(op=data["op"], values=[_expr_from_json(item) for item in data["values"]])
+    if kind == "Compare":
+        return ast.Compare(
+            left=_expr_from_json(data["left"]),
+            ops=[str(x) for x in data["ops"]],
+            comparators=[_expr_from_json(item) for item in data["comparators"]],
         )
     if kind == "Match":
         return ast.Match(
