@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -8,9 +9,17 @@ from typing import Any
 
 from . import ast
 
+try:
+    from . import _vext  # type: ignore[attr-defined]
+except Exception:
+    _vext = None
 
-ROOT = Path(__file__).resolve().parents[1]
-V_ENTRYPOINT = ROOT / "vlang_match_parser" / "main.v"
+
+PKG_DIR = Path(__file__).resolve().parent
+ROOT = PKG_DIR.parents[0]
+V_SOURCE_DIR = ROOT / "vlang_match_parser"
+PACKAGED_V_SOURCE_DIR = PKG_DIR / "_vsrc"
+PARSER_BINARY = PKG_DIR / "_bin" / ("v_ast_parser.exe" if os.name == "nt" else "v_ast_parser")
 
 
 def parse_expression(source: str) -> ast.Expression:
@@ -26,18 +35,17 @@ def parse_module(source: str) -> ast.Module:
 
 
 def _run_parser(mode: str, source: str) -> dict[str, Any]:
+    if _vext is not None:
+        payload = _vext.parse_json(mode, source, str(PKG_DIR))
+        return json.loads(payload)
+
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as handle:
         path = Path(handle.name)
         handle.write(source)
 
+    cmd, cwd = _parser_command(mode, path)
     try:
-        proc = subprocess.run(
-            ["v", "run", str(V_ENTRYPOINT.parent), mode, str(path)],
-            cwd=ROOT,
-            check=False,
-            text=True,
-            capture_output=True,
-        )
+        proc = subprocess.run(cmd, cwd=cwd, check=False, text=True, capture_output=True)
     finally:
         path.unlink(missing_ok=True)
 
@@ -46,6 +54,14 @@ def _run_parser(mode: str, source: str) -> dict[str, Any]:
         raise ValueError(message)
 
     return json.loads(proc.stdout)
+
+
+def _parser_command(mode: str, source_path: Path) -> tuple[list[str], Path]:
+    if PARSER_BINARY.exists():
+        return [str(PARSER_BINARY), mode, str(source_path)], ROOT
+    if PACKAGED_V_SOURCE_DIR.exists():
+        return ["v", "-enable-globals", "run", str(PACKAGED_V_SOURCE_DIR), mode, str(source_path)], ROOT
+    return ["v", "-enable-globals", "run", str(V_SOURCE_DIR), mode, str(source_path)], ROOT
 
 
 def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
