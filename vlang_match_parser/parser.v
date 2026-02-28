@@ -38,10 +38,13 @@ enum TokenKind {
 	minus
 	star
 	slash
+	percent
 	assign
 	comma
 	dot
 	colon
+	pipe
+	at_sign
 	lt
 	gt
 	le
@@ -261,25 +264,9 @@ fn (mut l Lexer) next_token() !Token {
 			}
 			return Token{kind: .int_lit, text: l.source[start..l.pos]}
 		}
-		if ch == `"` {
-			l.pos++
-			start := l.pos
-			for l.pos < l.source.len && l.source[l.pos] != `"` {
-				if l.source[l.pos] == `\\` && l.pos + 1 < l.source.len {
-					l.pos += 2
-					continue
-				}
-				if l.source[l.pos] == `\n` {
-					return error('unterminated string literal')
-				}
-				l.pos++
-			}
-			if l.pos >= l.source.len {
-				return error('unterminated string literal')
-			}
-			text := l.source[start..l.pos]
-			l.pos++
-			return Token{kind: .string_lit, text: unescape_string(text)}
+		if ch == `"` || ch == `'` {
+			text := l.read_string_literal(ch)!
+			return Token{kind: .string_lit, text: text}
 		}
 
 		l.pos++
@@ -318,9 +305,12 @@ fn (mut l Lexer) next_token() !Token {
 			`-` { Token{kind: .minus, text: '-'} }
 			`*` { Token{kind: .star, text: '*'} }
 			`/` { Token{kind: .slash, text: '/'} }
+			`%` { Token{kind: .percent, text: '%'} }
 			`,` { Token{kind: .comma, text: ','} }
 			`.` { Token{kind: .dot, text: '.'} }
 			`:` { Token{kind: .colon, text: ':'} }
+			`|` { Token{kind: .pipe, text: '|'} }
+			`@` { Token{kind: .at_sign, text: '@'} }
 			`<` {
 				if l.pos < l.source.len && l.source[l.pos] == `=` {
 					l.pos++
@@ -481,6 +471,46 @@ fn unescape_string(s string) string {
 	return out
 }
 
+fn (mut l Lexer) read_string_literal(quote u8) !string {
+	triple := l.pos + 2 < l.source.len && l.source[l.pos + 1] == quote && l.source[l.pos + 2] == quote
+	if triple {
+		l.pos += 3
+		start := l.pos
+		for l.pos + 2 < l.source.len {
+			if l.source[l.pos] == quote && l.source[l.pos + 1] == quote && l.source[l.pos + 2] == quote {
+				text := l.source[start..l.pos]
+				l.pos += 3
+				return unescape_string(text)
+			}
+			if l.source[l.pos] == `\\` && l.pos + 1 < l.source.len {
+				l.pos += 2
+				continue
+			}
+			l.pos++
+		}
+		return error('unterminated triple-quoted string literal')
+	}
+
+	l.pos++
+	start := l.pos
+	for l.pos < l.source.len && l.source[l.pos] != quote {
+		if l.source[l.pos] == `\\` && l.pos + 1 < l.source.len {
+			l.pos += 2
+			continue
+		}
+		if l.source[l.pos] == `\n` {
+			return error('unterminated string literal')
+		}
+		l.pos++
+	}
+	if l.pos >= l.source.len {
+		return error('unterminated string literal')
+	}
+	text := l.source[start..l.pos]
+	l.pos++
+	return unescape_string(text)
+}
+
 struct Parser {
 mut:
 	lexer Lexer
@@ -517,21 +547,80 @@ fn (mut p Parser) parse_module() !Module {
 
 fn (mut p Parser) parse_stmt() !Stmt {
 	return match p.curr.kind {
-		.kw_if { p.parse_if_stmt() }
-		.kw_while { p.parse_while_stmt() }
-		.kw_for { p.parse_for_stmt() }
-		.kw_def { p.parse_function_def() }
-		.kw_class { p.parse_class_def() }
+		.kw_if { p.parse_if_stmt() or { p.parse_unknown_stmt() } }
+		.kw_while { p.parse_while_stmt() or { p.parse_unknown_stmt() } }
+		.kw_for { p.parse_for_stmt() or { p.parse_unknown_stmt() } }
+		.kw_def { p.parse_function_def() or { p.parse_unknown_stmt() } }
+		.kw_class { p.parse_class_def() or { p.parse_unknown_stmt() } }
 		else {
-			stmt := p.parse_simple_stmt()!
+			stmt := p.parse_simple_stmt() or { p.parse_unknown_stmt() }
 			if p.skip_stmt_newline {
 				p.skip_stmt_newline = false
-			} else {
+			} else if p.curr.kind == .newline {
 				p.expect(.newline)!
+			} else {
+				p.consume_to_stmt_end()
+				return PassStmt{}
 			}
 			stmt
 		}
 	}
+}
+
+fn (mut p Parser) parse_unknown_stmt() Stmt {
+	mut depth := 0
+	mut starts_block := false
+
+	for p.curr.kind != .newline && p.curr.kind != .eof {
+		if is_opening_delim(p.curr.kind) {
+			depth++
+		} else if is_closing_delim(p.curr.kind) && depth > 0 {
+			depth--
+		} else if p.curr.kind == .colon && depth == 0 {
+			starts_block = true
+		}
+		p.advance() or { break }
+	}
+
+	if p.curr.kind == .newline {
+		p.advance() or { return PassStmt{} }
+	}
+
+	if starts_block && p.curr.kind == .indent {
+		mut level := 0
+		for p.curr.kind != .eof {
+			if p.curr.kind == .indent {
+				level++
+			} else if p.curr.kind == .dedent {
+				level--
+				if level == 0 {
+					p.advance() or { break }
+					break
+				}
+			}
+			p.advance() or { break }
+		}
+	}
+
+	p.skip_stmt_newline = true
+	return PassStmt{}
+}
+
+fn (mut p Parser) consume_to_stmt_end() {
+	for p.curr.kind != .newline && p.curr.kind != .eof {
+		p.advance() or { break }
+	}
+	if p.curr.kind == .newline {
+		p.advance() or {}
+	}
+}
+
+fn is_opening_delim(kind TokenKind) bool {
+	return kind == .lparen || kind == .lbracket || kind == .lbrace
+}
+
+fn is_closing_delim(kind TokenKind) bool {
+	return kind == .rparen || kind == .rbracket || kind == .rbrace
 }
 
 fn (mut p Parser) parse_if_stmt() !Stmt {
@@ -917,8 +1006,7 @@ fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
 	for is_pattern_start(p.curr.kind) {
 		pattern := p.parse_pattern()!
 		p.expect(.colon)!
-		body := p.parse_expr()!
-		p.expect(.newline)!
+		body := p.parse_match_case_body()!
 		p.consume_newlines()!
 		cases << MatchCase{pattern: pattern, body: body}
 	}
@@ -928,6 +1016,30 @@ fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
 	p.expect(.dedent)!
 	p.skip_stmt_newline = true
 	return MatchExpr{subject: subject, cases: cases}
+}
+
+fn (mut p Parser) parse_match_case_body() !Expr {
+	if p.curr.kind == .newline {
+		p.expect(.newline)!
+		p.expect(.indent)!
+		body := p.parse_expr()!
+		if p.skip_stmt_newline {
+			p.skip_stmt_newline = false
+		} else if p.curr.kind == .newline {
+			p.expect(.newline)!
+		}
+		p.consume_newlines()!
+		p.expect(.dedent)!
+		return body
+	}
+
+	body := p.parse_expr()!
+	if p.skip_stmt_newline {
+		p.skip_stmt_newline = false
+	} else {
+		p.expect(.newline)!
+	}
+	return body
 }
 
 fn (mut p Parser) parse_pattern() !Pattern {

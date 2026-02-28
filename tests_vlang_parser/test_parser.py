@@ -88,3 +88,17 @@ def test_arrow_style_match_is_rejected() -> None:
 def test_brace_style_match_is_rejected() -> None:
     with pytest.raises(ValueError):
         parse_expression("match x { 1: 10, _: 0 }")
+
+
+def test_parse_repository_test_py_module() -> None:
+    source = Path(__file__).resolve().parents[1] / "test.py"
+    parsed = parse_module(source.read_text())
+    assert isinstance(parsed, ast.Module)
+    assert len(parsed.body) > 0
+
+
+def test_parse_nested_match_variant_module() -> None:
+    source = Path(__file__).resolve().parents[1] / "test_nested_match.py"
+    parsed = parse_module(source.read_text())
+    dumped = ast.dump(parsed)
+    assert dumped.count("Match(subject=") >= 3
