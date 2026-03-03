@@ -16,10 +16,9 @@ jobs:
         python-version: ['3.12']
     steps:
     - uses: actions/checkout@v4
-    - name: Get history and tags for SCM versioning to work
-      run: |
-        git fetch --prune --unshallow
-        git fetch --depth=1 origin +refs/tags/*:refs/tags/*
+      with:
+        fetch-depth: 0
+        fetch-tags: true
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
