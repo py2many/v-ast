@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  run_tox:
+  run_tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -33,6 +33,6 @@ jobs:
     - name: Install Python dependencies
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install tox tox-gh-actions
-    - name: Tox
-      run: tox
+        python3 -m pip install pytest
+    - name: Pytest
+      run: pytest tests_vlang_parser
