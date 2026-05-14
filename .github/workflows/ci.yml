@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  V_VERSION: "0.5.1"
+
 jobs:
   test:
     name: Tests
@@ -25,9 +28,21 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Set up V
-        uses: vlang/setup-v@v1
-        with:
-          version: "0.5.1"
+        shell: bash
+        run: |
+          asset="v_linux.zip"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            if [[ "$RUNNER_ARCH" == "ARM64" ]]; then
+              asset="v_macos_arm64.zip"
+            else
+              asset="v_macos_x86_64.zip"
+            fi
+          fi
+          url="https://github.com/vlang/v/releases/download/${V_VERSION}/${asset}"
+          curl -fsSL "$url" -o "$RUNNER_TEMP/v.zip"
+          unzip -q "$RUNNER_TEMP/v.zip" -d "$RUNNER_TEMP/vlang"
+          echo "$RUNNER_TEMP/vlang/v" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/vlang/v/v" version
 
       - name: Set up libgc
         if: runner.os != 'Windows'
@@ -84,9 +99,35 @@ jobs:
           install: mingw-w64-ucrt-x86_64-gcc make
 
       - name: Set up V
-        uses: vlang/setup-v@v1
-        with:
-          version: "0.5.1"
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          asset="v_linux.zip"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            if [[ "$RUNNER_ARCH" == "ARM64" ]]; then
+              asset="v_macos_arm64.zip"
+            else
+              asset="v_macos_x86_64.zip"
+            fi
+          fi
+          url="https://github.com/vlang/v/releases/download/${V_VERSION}/${asset}"
+          curl -fsSL "$url" -o "$RUNNER_TEMP/v.zip"
+          unzip -q "$RUNNER_TEMP/v.zip" -d "$RUNNER_TEMP/vlang"
+          echo "$RUNNER_TEMP/vlang/v" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/vlang/v/v" version
+
+      - name: Set up V
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/vlang/v/releases/download/$env:V_VERSION/v_windows.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "v.zip"
+          $dest = Join-Path $env:RUNNER_TEMP "vlang"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force
+          $vBin = Join-Path $dest "v"
+          Add-Content -Path $env:GITHUB_PATH -Value $vBin
+          & (Join-Path $vBin "v.exe") version
 
       - name: Set up libgc
         if: runner.os != 'Windows'
