@@ -13,6 +13,7 @@ import base64
 import hashlib
 import os
 import pathlib
+import shutil
 import shlex
 import subprocess
 import sys
@@ -86,7 +87,22 @@ def _run_checked(cmd: list[str], cwd: pathlib.Path | None = None) -> None:
 def _with_module_path(cmd: list[str], temp_dir: pathlib.Path) -> list[str]:
     module_dir = temp_dir / "pyast"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    module_dir.symlink_to(ROOT, target_is_directory=True)
+    try:
+        module_dir.symlink_to(ROOT, target_is_directory=True)
+    except OSError:
+        shutil.copytree(
+            ROOT,
+            module_dir,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                "__pycache__",
+                "dist",
+                "dist-*",
+                "wheelhouse",
+                "vlang",
+            ),
+        )
     return [cmd[0], "-path", f"{temp_dir}|@vlib|@vmodules", *cmd[1:]]
 
 
@@ -127,9 +143,16 @@ def _build_python_extension() -> tuple[str, bytes]:
         raise RuntimeError("unable to locate Python include directory")
     with tempfile.TemporaryDirectory() as tmpdir:
         out = pathlib.Path(tmpdir) / f"_vext{ext_suffix}"
-        cmd = ["cc", "-O2", "-fPIC", "-I", include_dir, str(EXT_SOURCE), "-shared", "-o", str(out)]
+        cmd = ["cc", "-O2"]
+        if os.name != "nt":
+            cmd.append("-fPIC")
+        cmd.extend(["-I", include_dir, str(EXT_SOURCE), "-shared", "-o", str(out)])
         if sys.platform == "darwin":
             cmd.extend(["-undefined", "dynamic_lookup"])
+        elif os.name == "nt":
+            lib_dir = sysconfig.get_config_var("LIBDIR") or str(pathlib.Path(sys.base_prefix) / "libs")
+            py_lib = f"python{sys.version_info.major}{sys.version_info.minor}"
+            cmd.extend(["-L", lib_dir, f"-l{py_lib}"])
         elif os.name != "nt":
             cmd.append("-ldl")
         _run_checked(cmd, cwd=ROOT)
