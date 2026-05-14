@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -17,7 +18,8 @@ except Exception:
 
 PKG_DIR = Path(__file__).resolve().parent
 ROOT = PKG_DIR.parents[0]
-V_SOURCE_DIR = ROOT / "vlang_match_parser"
+V_SOURCE_DIR = ROOT
+V_CLI_SOURCE_DIR = ROOT / "cmd" / "v_ast_parser"
 PACKAGED_V_SOURCE_DIR = PKG_DIR / "_vsrc"
 PARSER_BINARY = PKG_DIR / "_bin" / ("v_ast_parser.exe" if os.name == "nt" else "v_ast_parser")
 
@@ -43,11 +45,18 @@ def _run_parser(mode: str, source: str) -> dict[str, Any]:
         path = Path(handle.name)
         handle.write(source)
 
-    cmd, cwd = _parser_command(mode, path)
+    cmd, cwd, module_path = _parser_command(mode, path)
     try:
-        proc = subprocess.run(cmd, cwd=cwd, check=False, text=True, capture_output=True)
+        env = os.environ.copy()
+        if module_path is not None:
+            env["VMODULES"] = str(module_path)
+        proc = subprocess.run(cmd, cwd=cwd, env=env, check=False, text=True, capture_output=True)
     finally:
         path.unlink(missing_ok=True)
+        if module_path is not None:
+            link = module_path / "py2many" / "v_ast"
+            link.unlink(missing_ok=True)
+            shutil.rmtree(module_path, ignore_errors=True)
 
     if proc.returncode != 0:
         message = proc.stderr.strip() or proc.stdout.strip() or "unknown parser failure"
@@ -56,12 +65,24 @@ def _run_parser(mode: str, source: str) -> dict[str, Any]:
     return json.loads(proc.stdout)
 
 
-def _parser_command(mode: str, source_path: Path) -> tuple[list[str], Path]:
+def _parser_command(mode: str, source_path: Path) -> tuple[list[str], Path, Path | None]:
     if PARSER_BINARY.exists():
-        return [str(PARSER_BINARY), mode, str(source_path)], ROOT
+        return [str(PARSER_BINARY), mode, str(source_path)], ROOT, None
     if PACKAGED_V_SOURCE_DIR.exists():
-        return ["v", "-enable-globals", "run", str(PACKAGED_V_SOURCE_DIR), mode, str(source_path)], ROOT
-    return ["v", "-enable-globals", "run", str(V_SOURCE_DIR), mode, str(source_path)], ROOT
+        module_path = _module_path_for(PACKAGED_V_SOURCE_DIR)
+        packaged_cli = module_path / "py2many" / "v_ast" / "cmd" / "v_ast_parser"
+        return ["v", "-enable-globals", "run", str(packaged_cli), mode, str(source_path)], ROOT, module_path
+    module_path = _module_path_for(V_SOURCE_DIR)
+    local_cli = module_path / "py2many" / "v_ast" / "cmd" / "v_ast_parser"
+    return ["v", "-enable-globals", "run", str(local_cli), mode, str(source_path)], ROOT, module_path
+
+
+def _module_path_for(source_dir: Path) -> Path:
+    module_path = Path(tempfile.mkdtemp(prefix="v_ast_vmodules_"))
+    package_dir = module_path / "py2many"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    (package_dir / "v_ast").symlink_to(source_dir, target_is_directory=True)
+    return module_path
 
 
 def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:

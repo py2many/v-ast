@@ -1,11 +1,12 @@
 module main
 
 import os
+import py2many.v_ast
 
 fn main() {
 	args := os.args[1..]
 	if args.len < 2 {
-		eprintln('usage: v run vlang_match_parser --json <source-file> | --json-expr <source-file>')
+		eprintln('usage: v run cmd/v_ast_parser --json <source-file> | --json-expr <source-file>')
 		exit(2)
 	}
 	mode := args[0]
@@ -14,24 +15,20 @@ fn main() {
 		eprintln('failed to read ${source_path}: ${err}')
 		exit(1)
 	}
-	mut parser := new_parser(source) or {
-		eprintln('parse setup error: ${err}')
-		exit(1)
-	}
 	if mode == '--json' {
-		mod := parser.parse_module() or {
+		payload := v_ast.parse_module_json(source) or {
 			eprintln('parse error: ${err}')
 			exit(1)
 		}
-		println(module_json(mod).trim_space())
+		println(payload.trim_space())
 		return
 	}
 	if mode == '--json-expr' {
-		expr := parser.parse_expr_root() or {
+		payload := v_ast.parse_expression_json(source) or {
 			eprintln('parse error: ${err}')
 			exit(1)
 		}
-		println(expr_json(expr).trim_space())
+		println(payload.trim_space())
 		return
 	}
 	eprintln('unknown mode: ${mode}')

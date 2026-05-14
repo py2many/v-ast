@@ -25,7 +25,8 @@ NAME = "v-ast"
 VERSION = "0.1.0"
 ROOT = pathlib.Path(__file__).resolve().parent
 PACKAGE_DIR = ROOT / "py_match_parser"
-VSRC_DIR = ROOT / "vlang_match_parser"
+VSRC_DIR = ROOT
+VCLI_DIR = ROOT / "cmd" / "v_ast_parser"
 EXT_SOURCE = PACKAGE_DIR / "_vext.c"
 BINARY_BASENAME = "v_ast_parser"
 
@@ -82,6 +83,13 @@ def _run_checked(cmd: list[str], cwd: pathlib.Path | None = None) -> None:
         raise RuntimeError(f"{rendered}: {message}")
 
 
+def _with_module_path(cmd: list[str], temp_dir: pathlib.Path) -> list[str]:
+    module_dir = temp_dir / "py2many" / "v_ast"
+    module_dir.parent.mkdir(parents=True, exist_ok=True)
+    module_dir.symlink_to(ROOT, target_is_directory=True)
+    return [cmd[0], "-path", f"{temp_dir}|@vlib|@vmodules", *cmd[1:]]
+
+
 def _shared_lib_name() -> str:
     if os.name == "nt":
         return "v_ast_parser.dll"
@@ -93,16 +101,22 @@ def _shared_lib_name() -> str:
 def _build_shared_library() -> tuple[str, bytes]:
     libname = _shared_lib_name()
     with tempfile.TemporaryDirectory() as tmpdir:
-        out = pathlib.Path(tmpdir) / libname
-        _run_checked(["v", "-enable-globals", "-shared", "-o", str(out), str(VSRC_DIR)], cwd=ROOT)
+        temp_dir = pathlib.Path(tmpdir)
+        out = temp_dir / libname
+        target = temp_dir / "py2many" / "v_ast"
+        cmd = _with_module_path(["v", "-enable-globals", "-shared", "-o", str(out), str(target)], temp_dir)
+        _run_checked(cmd, cwd=ROOT)
         return libname, out.read_bytes()
 
 
 def _build_binary() -> tuple[str, bytes]:
     suffix = ".exe" if os.name == "nt" else ""
     with tempfile.TemporaryDirectory() as tmpdir:
-        out = pathlib.Path(tmpdir) / f"{BINARY_BASENAME}{suffix}"
-        _run_checked(["v", "-enable-globals", "-o", str(out), str(VSRC_DIR)], cwd=ROOT)
+        temp_dir = pathlib.Path(tmpdir)
+        out = temp_dir / f"{BINARY_BASENAME}{suffix}"
+        target = temp_dir / "py2many" / "v_ast" / "cmd" / "v_ast_parser"
+        cmd = _with_module_path(["v", "-enable-globals", "-o", str(out), str(target)], temp_dir)
+        _run_checked(cmd, cwd=ROOT)
         return out.name, out.read_bytes()
 
 
@@ -164,6 +178,15 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
                 _write_entry(
                     zf,
                     f"{PACKAGE_DIR.name}/_vsrc/{src.name}",
+                    src.read_bytes(),
+                    0o644,
+                )
+            )
+        for src in sorted(VCLI_DIR.glob("*.v")):
+            rows.append(
+                _write_entry(
+                    zf,
+                    f"{PACKAGE_DIR.name}/_vsrc/cmd/v_ast_parser/{src.name}",
                     src.read_bytes(),
                     0o644,
                 )
