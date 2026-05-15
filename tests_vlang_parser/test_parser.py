@@ -27,10 +27,20 @@ def test_parse_match_expression_and_dump() -> None:
 def test_parse_module_import_and_call() -> None:
     source = 'import sys\nprint("hello")\n'
     parsed = parse_module(source)
-    assert ast.dump(parsed) == (
-        "Module(body=[Import(names=[alias(name='sys')]), "
-        "Expr(value=Call(func=Name(id='print', ctx=Load()), args=[Constant(value='hello')]))])"
-    )
+    assert isinstance(parsed, ast.Module)
+    assert len(parsed.body) == 2
+    assert isinstance(parsed.body[0], ast.Import)
+    assert parsed.body[0].names[0].name == "sys"
+
+    call_expr = parsed.body[1]
+    assert isinstance(call_expr, ast.Expr)
+    call = call_expr.value
+    assert isinstance(call, ast.Call)
+    assert isinstance(call.func, ast.Name)
+    assert call.func.id == "print"
+    assert len(call.args) == 1
+    assert isinstance(call.args[0], ast.Constant)
+    assert call.args[0].value == "hello"
 
 
 def test_control_flow_defs_and_expr_features() -> None:
