@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import os
 import pathlib
 import shutil
@@ -18,6 +19,7 @@ import shlex
 import subprocess
 import sys
 import sysconfig
+import tarfile
 import tempfile
 import zipfile
 
@@ -168,12 +170,78 @@ def _write_entry(zf: zipfile.ZipFile, arcname: str, data: bytes, mode: int) -> t
     return _record_line(arcname, data)
 
 
+def _sdist_name() -> str:
+    return f"{NAME.replace('-', '_')}-{VERSION}"
+
+
+def _sdist_filename() -> str:
+    return f"{_sdist_name()}.tar.gz"
+
+
+def _sdist_paths() -> list[pathlib.Path]:
+    paths = [
+        ROOT / "build_backend.py",
+        ROOT / "LICENSE",
+        ROOT / "pyproject.toml",
+        ROOT / "v.mod",
+    ]
+    paths.extend(sorted(PACKAGE_DIR.rglob("*.py")))
+    paths.extend(sorted(PACKAGE_DIR.rglob("*.c")))
+    paths.extend(sorted((ROOT / "tests_vlang_parser").rglob("*.py")))
+    paths.extend(sorted(VSRC_DIR.glob("*.v")))
+    paths.extend(sorted((ROOT / "cmd").rglob("*.v")))
+    for sample in [ROOT / "test.py", ROOT / "test_nested_match.py"]:
+        if sample.exists():
+            paths.append(sample)
+    return sorted({path for path in paths if path.exists()})
+
+
+def _write_sdist_entry(tf: tarfile.TarFile, path: pathlib.Path, arcname: str) -> None:
+    info = tf.gettarinfo(str(path), arcname)
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    with path.open("rb") as handle:
+        tf.addfile(info, handle)
+
+
+def _write_sdist_bytes(tf: tarfile.TarFile, arcname: str, data: bytes, mode: int = 0o644) -> None:
+    info = tarfile.TarInfo(arcname)
+    info.size = len(data)
+    info.mode = mode
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    tf.addfile(info, io.BytesIO(data))
+
+
 def get_requires_for_build_wheel(config_settings=None):  # noqa: D401
+    return []
+
+
+def get_requires_for_build_sdist(config_settings=None):
     return []
 
 
 def get_requires_for_build_editable(config_settings=None):
     return []
+
+
+def build_sdist(sdist_directory, config_settings=None):
+    sdist_dir = pathlib.Path(sdist_directory)
+    sdist_dir.mkdir(parents=True, exist_ok=True)
+    sdist_path = sdist_dir / _sdist_filename()
+    prefix = _sdist_name()
+
+    with tarfile.open(sdist_path, "w:gz", format=tarfile.PAX_FORMAT) as tf:
+        _write_sdist_bytes(tf, f"{prefix}/PKG-INFO", _metadata().encode("utf-8"))
+        for path in _sdist_paths():
+            arcname = f"{prefix}/{path.relative_to(ROOT).as_posix()}"
+            _write_sdist_entry(tf, path, arcname)
+
+    return sdist_path.name
 
 
 def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
