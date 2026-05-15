@@ -20,7 +20,7 @@ def test_parse_match_expression_and_dump() -> None:
     parsed = parse_expression(source)
     assert isinstance(parsed.body, ast.Match)
     dumped = ast.dump(parsed)
-    assert "Match(subject=Name(id='x')" in dumped
+    assert "Match(subject=Name(id='x', ctx=Load())" in dumped
     assert "match_case(pattern=MatchValue(value=Constant(value=0))" in dumped
 
 
@@ -29,7 +29,7 @@ def test_parse_module_import_and_call() -> None:
     parsed = parse_module(source)
     assert ast.dump(parsed) == (
         "Module(body=[Import(names=[alias(name='sys')]), "
-        "Expr(value=Call(func=Name(id='print'), args=[Constant(value='hello')]))])"
+        "Expr(value=Call(func=Name(id='print', ctx=Load()), args=[Constant(value='hello')]))])"
     )
 
 
@@ -49,16 +49,21 @@ def test_control_flow_defs_and_expr_features() -> None:
     parsed = parse_module(source)
     dumped = ast.dump(parsed)
     assert "ClassDef(name='C'" in dumped
-    assert "FunctionDef(name='f', args=['x', 'y']" in dumped
-    assert "If(test=BoolOp(op='Or'" in dumped
-    assert "UnaryOp(op='Not'" in dumped
-    assert "Compare(left=Name(id='y'), ops=['Lt']" in dumped
-    assert "Subscript(value=Attribute(value=Name(id='x'), attr='attr'), slice=Constant(value=0))" in dumped
-    assert "While(test=Name(id='x')" in dumped
-    assert "For(target='i', iter=Name(id='y')" in dumped
+    assert "FunctionDef(name='f', args=arguments(" in dumped
+    assert "arg(arg='x')" in dumped
+    assert "arg(arg='y')" in dumped
+    assert "If(test=BoolOp(op=Or()" in dumped
+    assert "UnaryOp(op=Not()" in dumped
+    assert "Compare(left=Name(id='y', ctx=Load()), ops=[Lt()]" in dumped
+    assert (
+        "Subscript(value=Attribute(value=Name(id='x', ctx=Load()), attr='attr', ctx=Load()), "
+        "slice=Constant(value=0), ctx=Load())" in dumped
+    )
+    assert "While(test=Name(id='x', ctx=Load())" in dumped
+    assert "For(target=Name(id='i', ctx=Store()), iter=Name(id='y'" in dumped
     assert "Continue()" in dumped
     assert "Break()" in dumped
-    assert "Return(value=None)" in dumped
+    assert "Return()" in dumped
 
 
 def test_indentation_based_match_expression() -> None:
@@ -71,8 +76,8 @@ def test_indentation_based_match_expression() -> None:
     )
     parsed = parse_module(source)
     dumped = ast.dump(parsed)
-    assert "Assign(target='y', value=Match(subject=Name(id='x')" in dumped
-    assert "MatchAs(name=None)" in dumped
+    assert "Assign(targets=[Name(id='y', ctx=Store())], value=Match(subject=Name(id='x', ctx=Load())" in dumped
+    assert "MatchAs()" in dumped
 
 
 def test_old_python_match_statement_syntax_is_rejected() -> None:

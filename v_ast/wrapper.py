@@ -33,7 +33,7 @@ def parse_module(source: str) -> ast.Module:
     payload = _run_parser("--json", source)
     if payload.get("type") != "Module":
         raise ValueError(f"expected Module payload, got {payload.get('type')}")
-    return ast.Module(body=[_stmt_from_json(item) for item in payload["body"]])
+    return ast.Module(body=[_stmt_from_json(item) for item in payload["body"]], type_ignores=[])
 
 
 def _run_parser(mode: str, source: str) -> dict[str, Any]:
@@ -86,11 +86,15 @@ def _module_path_for(source_dir: Path) -> Path:
 def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
     kind = data["type"]
     if kind == "Import":
-        return ast.Import(names=[ast.alias(name=item["name"]) for item in data["names"]])
+        return ast.Import(names=[ast.alias(name=item["name"], asname=None) for item in data["names"]])
     if kind == "Expr":
         return ast.Expr(value=_expr_from_json(data["value"]))
     if kind == "Assign":
-        return ast.Assign(target=data["target"], value=_expr_from_json(data["value"]))
+        return ast.Assign(
+            targets=[ast.Name(id=data["target"], ctx=ast.Store())],
+            value=_expr_from_json(data["value"]),
+            type_comment=None,
+        )
     if kind == "Pass":
         return ast.Pass()
     if kind == "Break":
@@ -114,55 +118,70 @@ def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
         )
     if kind == "For":
         return ast.For(
-            target=data["target"],
+            target=ast.Name(id=data["target"], ctx=ast.Store()),
             iter=_expr_from_json(data["iter"]),
             body=[_stmt_from_json(item) for item in data["body"]],
             orelse=[_stmt_from_json(item) for item in data["orelse"]],
+            type_comment=None,
         )
     if kind == "FunctionDef":
-        return ast.FunctionDef(
+        node = ast.FunctionDef(
             name=data["name"],
-            args=[str(x) for x in data["args"]],
+            args=_arguments_from_names(data["args"]),
             body=[_stmt_from_json(item) for item in data["body"]],
+            decorator_list=[],
+            returns=None,
+            type_comment=None,
         )
+        _set_optional_field(node, "type_params", [])
+        return node
     if kind == "ClassDef":
-        return ast.ClassDef(
+        node = ast.ClassDef(
             name=data["name"],
             bases=[_expr_from_json(item) for item in data["bases"]],
+            keywords=[],
             body=[_stmt_from_json(item) for item in data["body"]],
+            decorator_list=[],
         )
+        _set_optional_field(node, "type_params", [])
+        return node
     raise ValueError(f"unsupported statement type: {kind}")
 
 
 def _expr_from_json(data: dict[str, Any]) -> ast.expr:
     kind = data["type"]
     if kind == "Constant":
-        return ast.Constant(value=data["value"])
+        return ast.Constant(value=data["value"], kind=None)
     if kind == "Name":
-        return ast.Name(id=data["id"])
+        return ast.Name(id=data["id"], ctx=ast.Load())
     if kind == "Call":
         return ast.Call(
             func=_expr_from_json(data["func"]),
             args=[_expr_from_json(item) for item in data["args"]],
+            keywords=[],
         )
     if kind == "Attribute":
-        return ast.Attribute(value=_expr_from_json(data["value"]), attr=data["attr"])
+        return ast.Attribute(value=_expr_from_json(data["value"]), attr=data["attr"], ctx=ast.Load())
     if kind == "Subscript":
-        return ast.Subscript(value=_expr_from_json(data["value"]), slice=_expr_from_json(data["slice"]))
+        return ast.Subscript(
+            value=_expr_from_json(data["value"]),
+            slice=_expr_from_json(data["slice"]),
+            ctx=ast.Load(),
+        )
     if kind == "UnaryOp":
-        return ast.UnaryOp(op=data["op"], operand=_expr_from_json(data["operand"]))
+        return ast.UnaryOp(op=_unary_op(data["op"]), operand=_expr_from_json(data["operand"]))
     if kind == "BinOp":
         return ast.BinOp(
             left=_expr_from_json(data["left"]),
-            op=data["op"],
+            op=_bin_op(data["op"]),
             right=_expr_from_json(data["right"]),
         )
     if kind == "BoolOp":
-        return ast.BoolOp(op=data["op"], values=[_expr_from_json(item) for item in data["values"]])
+        return ast.BoolOp(op=_bool_op(data["op"]), values=[_expr_from_json(item) for item in data["values"]])
     if kind == "Compare":
         return ast.Compare(
             left=_expr_from_json(data["left"]),
-            ops=[str(x) for x in data["ops"]],
+            ops=[_cmp_op(str(x)) for x in data["ops"]],
             comparators=[_expr_from_json(item) for item in data["comparators"]],
         )
     if kind == "Match":
@@ -176,7 +195,7 @@ def _expr_from_json(data: dict[str, Any]) -> ast.expr:
 def _pattern_from_json(data: dict[str, Any]) -> ast.pattern:
     kind = data["type"]
     if kind == "MatchAs":
-        return ast.MatchAs(name=data.get("name"))
+        return ast.MatchAs(pattern=None, name=data.get("name"))
     if kind == "MatchValue":
         value = _expr_from_json(data["value"])
         if not isinstance(value, ast.Constant):
@@ -190,5 +209,62 @@ def _case_from_json(data: dict[str, Any]) -> ast.match_case:
         raise ValueError(f"unsupported case type: {data['type']}")
     return ast.match_case(
         pattern=_pattern_from_json(data["pattern"]),
-        body=_expr_from_json(data["body"]),
+        guard=None,
+        body=[ast.Expr(value=_expr_from_json(data["body"]))],
     )
+
+
+def _arguments_from_names(names: list[Any]) -> ast.arguments:
+    return ast.arguments(
+        posonlyargs=[],
+        args=[ast.arg(arg=str(name), annotation=None, type_comment=None) for name in names],
+        vararg=None,
+        kwonlyargs=[],
+        kw_defaults=[],
+        kwarg=None,
+        defaults=[],
+    )
+
+
+def _set_optional_field(node: ast.AST, name: str, value: Any) -> None:
+    if name in getattr(node, "_fields", ()):
+        setattr(node, name, value)
+
+
+def _unary_op(name: str) -> ast.unaryop:
+    ops = {
+        "Not": ast.Not,
+        "UAdd": ast.UAdd,
+        "USub": ast.USub,
+    }
+    return ops[name]()
+
+
+def _bin_op(name: str) -> ast.operator:
+    ops = {
+        "Add": ast.Add,
+        "Sub": ast.Sub,
+        "Mult": ast.Mult,
+        "Div": ast.Div,
+    }
+    return ops[name]()
+
+
+def _bool_op(name: str) -> ast.boolop:
+    ops = {
+        "And": ast.And,
+        "Or": ast.Or,
+    }
+    return ops[name]()
+
+
+def _cmp_op(name: str) -> ast.cmpop:
+    ops = {
+        "Eq": ast.Eq,
+        "NotEq": ast.NotEq,
+        "Lt": ast.Lt,
+        "LtE": ast.LtE,
+        "Gt": ast.Gt,
+        "GtE": ast.GtE,
+    }
+    return ops[name]()
