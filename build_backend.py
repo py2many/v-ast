@@ -111,6 +111,15 @@ def _run_checked(cmd: list[str], cwd: pathlib.Path | None = None) -> None:
         raise RuntimeError(f"{rendered}: {message}")
 
 
+def _remove_gnu_property_note(path: pathlib.Path) -> None:
+    if os.name == "nt" or not sys.platform.startswith("linux"):
+        return
+    objcopy = shutil.which("objcopy")
+    if objcopy is None:
+        return
+    _run_checked([objcopy, "--remove-section", ".note.gnu.property", str(path)], cwd=ROOT)
+
+
 def _with_module_path(cmd: list[str], temp_dir: pathlib.Path) -> list[str]:
     module_dir = temp_dir / "pyast"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -170,6 +179,7 @@ def _build_binary() -> tuple[str, bytes]:
             temp_dir,
         )
         _run_checked(cmd, cwd=ROOT)
+        _remove_gnu_property_note(out)
         return out.name, out.read_bytes()
 
 
