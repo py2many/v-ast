@@ -81,7 +81,7 @@ jobs:
             runner: ubuntu-latest
             manylinux_image: quay.io/pypa/manylinux_2_34_x86_64
             v_asset: v_linux.zip
-            vflags: "-cflags '-march=x86-64'"
+            vflags: "-showcc -show-c-output -cflags '-march=x86-64'"
           - os: linux
             platform: aarch64
             runner: ubuntu-22.04-arm
