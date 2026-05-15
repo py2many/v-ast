@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from v_ast import ast, parse_expression, parse_module
+from spy_ast import ast, parse_expression, parse_module
 
 
 def _dump(node: py_ast.AST) -> str:
@@ -98,4 +98,3 @@ def test_match_expression_uses_builtin_match_node_shape() -> None:
 
     assert isinstance(parsed.body, ast.Match)
     assert _dump(parsed) == _dump(expected)
-

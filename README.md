@@ -29,12 +29,12 @@ Save this as `dump_ast.py`:
 from pathlib import Path
 import argparse
 import ast
-import v_ast
+import spy_ast
 
 
 def parse_source(path: Path) -> ast.Module:
     source = path.read_text()
-    return v_ast.parse_module(source)
+    return spy_ast.parse_module(source)
 
 
 def main() -> None:

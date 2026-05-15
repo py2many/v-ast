@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from v_ast import ast, parse_expression, parse_module
+from spy_ast import ast, parse_expression, parse_module
 
 
 def test_parse_arithmetic() -> None:

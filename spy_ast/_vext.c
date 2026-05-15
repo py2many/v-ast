@@ -12,19 +12,19 @@
 #endif
 
 #if defined(_WIN32)
-#define V_AST_SHARED_LIB_NAME "pyast_parser.dll"
+#define SPY_AST_SHARED_LIB_NAME "pyast_parser.dll"
 #elif defined(__APPLE__)
-#define V_AST_SHARED_LIB_NAME "libpyast_parser.dylib"
+#define SPY_AST_SHARED_LIB_NAME "libpyast_parser.dylib"
 #else
-#define V_AST_SHARED_LIB_NAME "libpyast_parser.so"
+#define SPY_AST_SHARED_LIB_NAME "libpyast_parser.so"
 #endif
 
-typedef const char* (*v_ast_parse_fn)(const char* source);
-typedef const char* (*v_ast_last_error_fn)(void);
+typedef const char* (*spy_ast_parse_fn)(const char* source);
+typedef const char* (*spy_ast_last_error_fn)(void);
 
-static v_ast_parse_fn g_parse_module = NULL;
-static v_ast_parse_fn g_parse_expr = NULL;
-static v_ast_last_error_fn g_last_error = NULL;
+static spy_ast_parse_fn g_parse_module = NULL;
+static spy_ast_parse_fn g_parse_expr = NULL;
+static spy_ast_last_error_fn g_last_error = NULL;
 
 #if defined(_WIN32)
 static HMODULE g_lib_handle = NULL;
@@ -42,26 +42,26 @@ static int ensure_v_lib_loaded(const char* package_dir) {
     }
     char lib_path[PATH_MAX];
 #if defined(_WIN32)
-    _snprintf(lib_path, sizeof(lib_path), "%s\\%s", package_dir, V_AST_SHARED_LIB_NAME);
+    _snprintf(lib_path, sizeof(lib_path), "%s\\%s", package_dir, SPY_AST_SHARED_LIB_NAME);
     g_lib_handle = LoadLibraryA(lib_path);
     if (g_lib_handle == NULL) {
         PyErr_Format(PyExc_ImportError, "failed to load shared library: %s", lib_path);
         return -1;
     }
-    g_parse_module = (v_ast_parse_fn)GetProcAddress(g_lib_handle, "pyast_parse_module_json");
-    g_parse_expr = (v_ast_parse_fn)GetProcAddress(g_lib_handle, "pyast_parse_expression_json");
-    g_last_error = (v_ast_last_error_fn)GetProcAddress(g_lib_handle, "pyast_last_error");
+    g_parse_module = (spy_ast_parse_fn)GetProcAddress(g_lib_handle, "pyast_parse_module_json");
+    g_parse_expr = (spy_ast_parse_fn)GetProcAddress(g_lib_handle, "pyast_parse_expression_json");
+    g_last_error = (spy_ast_last_error_fn)GetProcAddress(g_lib_handle, "pyast_last_error");
 #else
-    snprintf(lib_path, sizeof(lib_path), "%s/%s", package_dir, V_AST_SHARED_LIB_NAME);
+    snprintf(lib_path, sizeof(lib_path), "%s/%s", package_dir, SPY_AST_SHARED_LIB_NAME);
     g_lib_handle = dlopen(lib_path, RTLD_NOW | RTLD_LOCAL);
     if (g_lib_handle == NULL) {
         const char* err = dlerror();
         PyErr_Format(PyExc_ImportError, "failed to load shared library %s: %s", lib_path, err ? err : "unknown");
         return -1;
     }
-    g_parse_module = (v_ast_parse_fn)dlsym(g_lib_handle, "pyast_parse_module_json");
-    g_parse_expr = (v_ast_parse_fn)dlsym(g_lib_handle, "pyast_parse_expression_json");
-    g_last_error = (v_ast_last_error_fn)dlsym(g_lib_handle, "pyast_last_error");
+    g_parse_module = (spy_ast_parse_fn)dlsym(g_lib_handle, "pyast_parse_module_json");
+    g_parse_expr = (spy_ast_parse_fn)dlsym(g_lib_handle, "pyast_parse_expression_json");
+    g_last_error = (spy_ast_last_error_fn)dlsym(g_lib_handle, "pyast_last_error");
 #endif
 
     if (g_parse_module == NULL || g_parse_expr == NULL || g_last_error == NULL) {
@@ -75,7 +75,7 @@ static PyObject* py_parse_json(PyObject* self, PyObject* args) {
     const char* mode = NULL;
     const char* source = NULL;
     const char* package_dir = NULL;
-    v_ast_parse_fn fn = NULL;
+    spy_ast_parse_fn fn = NULL;
 
     (void)self;
 
@@ -114,7 +114,7 @@ static PyMethodDef methods[] = {
 static struct PyModuleDef module_def = {
     PyModuleDef_HEAD_INIT,
     "_vext",
-    "Native extension for v-ast parser.",
+    "Native extension for spy-ast parser.",
     -1,
     methods,
 };

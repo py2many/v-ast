@@ -1,7 +1,7 @@
 """PEP 517 backend for spy-ast.
 
 Build outputs include:
-- Python package `v_ast`
+- Python package `spy_ast`
 - Native V shared library
 - CPython extension that calls into the V shared library
 - Native parser executable fallback
@@ -27,7 +27,7 @@ import zipfile
 NAME = "spy-ast"
 VERSION = "0.1.1"
 ROOT = pathlib.Path(__file__).resolve().parent
-PACKAGE_DIR = ROOT / "v_ast"
+PACKAGE_DIR = ROOT / "spy_ast"
 VSRC_DIR = ROOT
 VCLI_DIR = ROOT / "cmd" / "pyast_parser"
 EXT_SOURCE = PACKAGE_DIR / "_vext.c"
