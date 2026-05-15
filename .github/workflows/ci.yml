@@ -174,8 +174,8 @@ jobs:
               unzip -q /tmp/v.zip -d /tmp/vlang
               export PATH="/tmp/vlang/v:${PATH}"
               v version
-              /opt/python/cp312-cp312/bin/pip install uv
-              /opt/python/cp312-cp312/bin/uv build --wheel --out-dir wheelhouse-raw
+              rm -rf wheelhouse wheelhouse-raw
+              /opt/python/cp312-cp312/bin/python -m pip wheel . --no-deps --no-build-isolation --wheel-dir wheelhouse-raw
               auditwheel repair wheelhouse-raw/*.whl --wheel-dir wheelhouse
               chown -R "${HOST_UID}:${HOST_GID}" wheelhouse wheelhouse-raw
             '
