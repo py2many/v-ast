@@ -85,11 +85,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: runner.os != 'Linux'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Set up uv
+        if: runner.os != 'Linux'
         uses: astral-sh/setup-uv@v5
 
       - name: Set up MinGW compiler
@@ -101,16 +103,13 @@ jobs:
           install: mingw-w64-ucrt-x86_64-gcc make
 
       - name: Set up V
-        if: runner.os != 'Windows'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          asset="v_linux.zip"
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            if [[ "$RUNNER_ARCH" == "ARM64" ]]; then
-              asset="v_macos_arm64.zip"
-            else
-              asset="v_macos_x86_64.zip"
-            fi
+          if [[ "$RUNNER_ARCH" == "ARM64" ]]; then
+            asset="v_macos_arm64.zip"
+          else
+            asset="v_macos_x86_64.zip"
           fi
           url="https://github.com/vlang/v/releases/download/${V_VERSION}/${asset}"
           curl -fsSL "$url" -o "$RUNNER_TEMP/v.zip"
@@ -132,22 +131,40 @@ jobs:
           & (Join-Path $vBin "v.exe") version
 
       - name: Set up libgc
-        if: runner.os != 'Windows'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install bdw-gc
-            gc_prefix="$(brew --prefix bdw-gc)"
-            echo "CPPFLAGS=-I${gc_prefix}/include" >> "$GITHUB_ENV"
-            echo "LDFLAGS=-L${gc_prefix}/lib" >> "$GITHUB_ENV"
-          else
-            sudo apt-get update
-            sudo apt-get install -y libgc-dev
-            echo "LDFLAGS=-L/usr/lib/x86_64-linux-gnu" >> "$GITHUB_ENV"
-          fi
+          brew install bdw-gc
+          gc_prefix="$(brew --prefix bdw-gc)"
+          echo "CPPFLAGS=-I${gc_prefix}/include" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-L${gc_prefix}/lib" >> "$GITHUB_ENV"
 
       - name: Build wheel
+        if: runner.os != 'Linux'
         run: uv build --wheel --out-dir wheelhouse
+
+      - name: Build manylinux wheel
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          docker run --rm \
+            -e V_VERSION="${V_VERSION}" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -v "${GITHUB_WORKSPACE}:/io" \
+            -w /io \
+            pypa/manylinux_2_28_x86_64 \
+            bash -euxo pipefail -c '
+              dnf install -y gc-devel unzip
+              curl -fsSL "https://github.com/vlang/v/releases/download/${V_VERSION}/v_linux.zip" -o /tmp/v.zip
+              unzip -q /tmp/v.zip -d /tmp/vlang
+              export PATH="/tmp/vlang/v:${PATH}"
+              v version
+              /opt/python/cp312-cp312/bin/pip install uv
+              /opt/python/cp312-cp312/bin/uv build --wheel --out-dir wheelhouse-raw
+              auditwheel repair wheelhouse-raw/*.whl --wheel-dir wheelhouse
+              chown -R "${HOST_UID}:${HOST_GID}" wheelhouse wheelhouse-raw
+            '
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
@@ -175,3 +192,5 @@ jobs:
 
       - name: Publish wheels
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true

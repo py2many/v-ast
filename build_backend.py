@@ -38,9 +38,27 @@ def _dist_info_dir() -> str:
     return f"{NAME.replace('-', '_')}-{VERSION}.dist-info"
 
 
-def _wheel_tag() -> str:
+def _python_tag() -> str:
+    return f"cp{sys.version_info.major}{sys.version_info.minor}"
+
+
+def _abi_tag() -> str:
+    return _python_tag()
+
+
+def _platform_tag() -> str:
     platform = sysconfig.get_platform().replace("-", "_").replace(".", "_")
-    return f"py3-none-{platform}"
+    if sys.platform.startswith("linux"):
+        if platform == "linux_x86_64":
+            return "manylinux_2_28_x86_64"
+        if platform == "linux_aarch64":
+            return "manylinux_2_28_aarch64"
+    return platform
+
+
+def _wheel_tag() -> str:
+    return f"{_python_tag()}-{_abi_tag()}-{_platform_tag()}"
+
 
 
 def _wheel_name() -> str:
