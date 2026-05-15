@@ -71,6 +71,7 @@ jobs:
     name: Build wheel (Python ${{ matrix.python-version }} ${{ matrix.target.os }} ${{ matrix.target.platform }})
     runs-on: ${{ matrix.target.runner }}
     needs: test
+    if: github.event_name == 'release'
 
     strategy:
       fail-fast: false
