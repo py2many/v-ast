@@ -50,9 +50,9 @@ def _platform_tag() -> str:
     platform = sysconfig.get_platform().replace("-", "_").replace(".", "_")
     if sys.platform.startswith("linux"):
         if platform == "linux_x86_64":
-            return "manylinux_2_28_x86_64"
+            return "manylinux_2_34_x86_64"
         if platform == "linux_aarch64":
-            return "manylinux_2_28_aarch64"
+            return "manylinux_2_34_aarch64"
     return platform
 
 

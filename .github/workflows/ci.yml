@@ -79,12 +79,12 @@ jobs:
           - os: linux
             platform: x86_64
             runner: ubuntu-latest
-            manylinux_image: quay.io/pypa/manylinux_2_28_x86_64
+            manylinux_image: quay.io/pypa/manylinux_2_34_x86_64
             v_asset: v_linux.zip
           - os: linux
             platform: aarch64
             runner: ubuntu-22.04-arm
-            manylinux_image: quay.io/pypa/manylinux_2_28_aarch64
+            manylinux_image: quay.io/pypa/manylinux_2_34_aarch64
             v_asset: v_linux_arm64.zip
           - os: macos
             platform: arm64
