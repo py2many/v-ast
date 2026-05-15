@@ -1,4 +1,4 @@
-"""PEP 517 backend for v-ast.
+"""PEP 517 backend for spy-ast.
 
 Build outputs include:
 - Python package `v_ast`
@@ -24,7 +24,7 @@ import tempfile
 import zipfile
 
 
-NAME = "v-ast"
+NAME = "spy-ast"
 VERSION = "0.1.0"
 ROOT = pathlib.Path(__file__).resolve().parent
 PACKAGE_DIR = ROOT / "v_ast"
@@ -53,7 +53,7 @@ def _metadata() -> str:
             "Metadata-Version: 2.1",
             f"Name: {NAME}",
             f"Version: {VERSION}",
-            "Summary: V-based parser for a modified Python dialect with match as an expression.",
+            "Summary: Static Python AST parser for a modified Python dialect with match as an expression.",
             "Requires-Python: >=3.11",
             "",
         ]
@@ -64,7 +64,7 @@ def _wheel_file() -> str:
     return "\n".join(
         [
             "Wheel-Version: 1.0",
-            "Generator: v-ast-local-backend",
+            "Generator: spy-ast-local-backend",
             "Root-Is-Purelib: false",
             f"Tag: {_wheel_tag()}",
             "",

@@ -4,12 +4,12 @@ build-backend = "build_backend"
 backend-path = ["."]
 
 [project]
-name = "v-ast"
+name = "spy-ast"
 version = "0.1.0"
-description = "V-based parser for a modified Python dialect with match as an expression."
+description = "Static Python AST parser for a modified Python dialect with match as an expression."
 readme = "README_vlang_match.md"
 requires-python = ">=3.11"
-authors = [{ name = "v-ast contributors" }]
+authors = [{ name = "spy-ast contributors" }]
 dependencies = []
 
 [tool.pytest.ini_options]
